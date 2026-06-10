@@ -72,10 +72,11 @@ jobs:
             set -euo pipefail
             cd "${DEPLOY_PATH:-/opt/oob-collaborator}"
 
-            # Get the latest compose files (deploy.yml + prod override) without
-            # clobbering the server's .env.
+            # Get the latest compose files and migrations without clobbering the
+            # server's .env. Migrations are bind-mounted into the migrate service
+            # from the host, so they must be updated on every deploy.
             git fetch --depth 1 origin main
-            git checkout origin/main -- docker-compose.yml docker-compose.prod.yml
+            git checkout origin/main -- docker-compose.yml docker-compose.prod.yml backend/migrations
 
             # Authenticate to GHCR so the prebuilt image can be pulled.
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin

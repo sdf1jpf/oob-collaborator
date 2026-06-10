@@ -150,8 +150,9 @@ func (e *Enricher) lookup(ctx context.Context, ip string) (*store.IPRecon, error
 		reverseDNS = names[0]
 	}
 
+	// ip-api.com free tier only supports HTTP; HTTPS returns a long error message.
 	url := fmt.Sprintf(
-		"https://ip-api.com/json/%s?fields=status,message,country,countryCode,regionName,city,lat,lon,isp,org,as",
+		"http://ip-api.com/json/%s?fields=status,message,country,countryCode,regionName,city,lat,lon,isp,org,as",
 		ip,
 	)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
