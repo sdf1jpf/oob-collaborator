@@ -81,8 +81,47 @@ jobs:
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
             export COLLABORATOR_IMAGE="$IMAGE_TAG"
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull collaborator
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+            compose() {
+              docker compose -f docker-compose.yml -f docker-compose.prod.yml "$@"
+            }
+
+            compose pull collaborator
+
+            # Bring the database up first so migrations have something to run
+            # against (and so the recovery path below can reach it).
+            compose up -d postgres
+
+            # Build the DB URL the same way the compose files do, mirroring their
+            # defaults, so we can issue a `force` if migrations are wedged.
+            set -a; [ -f .env ] && . ./.env; set +a
+            DB_USER="${POSTGRES_USER:-collaborator}"
+            DB_NAME="${POSTGRES_DB:-collaborator}"
+            DB_SSLMODE="${POSTGRES_SSLMODE:-disable}"
+            DB_URL="postgres://${DB_USER}:${POSTGRES_PASSWORD}@postgres:5432/${DB_NAME}?sslmode=${DB_SSLMODE}"
+
+            # Run migrations, auto-recovering from a "dirty" state left behind by a
+            # previously interrupted run. The schema is pure (transactional) DDL, so
+            # a failed migration rolls back cleanly; forcing the version back to the
+            # last good one and retrying re-applies it safely.
+            if ! migrate_output="$(compose run --rm migrate 2>&1)"; then
+              printf '%s\n' "$migrate_output"
+              dirty_version="$(printf '%s\n' "$migrate_output" \
+                | grep -oE 'Dirty database version [0-9]+' \
+                | grep -oE '[0-9]+' | head -n1)"
+              if [ -z "$dirty_version" ]; then
+                echo "Migration failed for a reason other than a dirty state; aborting."
+                exit 1
+              fi
+              previous=$((dirty_version - 1))
+              echo "Detected dirty migration at version ${dirty_version}; forcing to ${previous} and retrying."
+              compose run --rm migrate -path=/migrations -database="$DB_URL" force "$previous"
+              compose run --rm migrate
+            else
+              printf '%s\n' "$migrate_output"
+            fi
+
+            compose up -d
             docker image prune -f
         env:
           IMAGE_TAG: ${{ needs.build.outputs.image }}:${{ github.sha }}
