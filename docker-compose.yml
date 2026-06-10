@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: collaborator
+      POSTGRES_PASSWORD: collaborator
+      POSTGRES_DB: collaborator
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U collaborator -d collaborator"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    image: migrate/migrate:v4.17.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend/migrations:/migrations
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://collaborator:collaborator@postgres:5432/collaborator?sslmode=disable"
+      - "up"
+    restart: "no"
+
+  collaborator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    cap_add:
+      - NET_BIND_SERVICE
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+      - "80:80/tcp"
+      - "443:443/tcp"
+      - "25:25/tcp"
+      - "587:587/tcp"
+    environment:
+      DATABASE_URL: postgres://collaborator:collaborator@postgres:5432/collaborator?sslmode=disable
+
+volumes:
+  postgres_data:

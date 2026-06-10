@@ -1,0 +1,44 @@
+#cloud-config
+# ---------------------------------------------------------------------------
+# OOB Collaborator — DigitalOcean Droplet bootstrap
+#
+# Paste this into the "User data" field when creating the Droplet (Ubuntu 24.04).
+# It prepares the host so you can deploy immediately:
+#   - frees port 53 (disables the systemd-resolved stub listener)
+#   - installs Docker Engine + the Compose plugin
+#   - clones the repo into /opt/oob-collaborator
+#
+# After first boot, SSH in and finish the deploy:
+#   cd /opt/oob-collaborator
+#   cp .env.example .env   # edit DOMAIN, PUBLIC_IP, secrets, ACME_EMAIL
+#   docker compose up --build -d
+#
+# Edit REPO_URL below before pasting.
+# ---------------------------------------------------------------------------
+
+package_update: true
+package_upgrade: false
+
+write_files:
+  - path: /etc/systemd/resolved.conf.d/disable-stub.conf
+    content: |
+      [Resolve]
+      DNSStubListener=no
+
+runcmd:
+  # --- Free port 53 for the collaborator DNS engine ---
+  - ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+  - systemctl restart systemd-resolved
+
+  # --- Install Docker Engine + Compose plugin ---
+  - curl -fsSL https://get.docker.com | sh
+
+  # --- Clone the repo (edit REPO_URL) ---
+  - REPO_URL="https://github.com/<your-org>/oob-collaborator.git"
+  - git clone "$REPO_URL" /opt/oob-collaborator || echo "Clone failed — set REPO_URL in cloud-init.yaml"
+  - test -f /opt/oob-collaborator/.env.example && cp -n /opt/oob-collaborator/.env.example /opt/oob-collaborator/.env || true
+
+final_message: |
+  OOB Collaborator host prep complete after $UPTIME seconds.
+  Next: cd /opt/oob-collaborator && edit .env, then `docker compose up --build -d`.
+  See docs/DEPLOY_DIGITALOCEAN.md for the full guide.

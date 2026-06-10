@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS interactions;
+DROP TABLE IF EXISTS payloads;
+DROP TABLE IF EXISTS engagements;

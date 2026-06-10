@@ -1,0 +1,13 @@
+# Production override: run a prebuilt image instead of building on the droplet.
+#
+# Used by the GitHub Actions deploy workflow, which pulls the image published to
+# GHCR rather than running a multi-stage build on the server.
+#
+#   COLLABORATOR_IMAGE=ghcr.io/<owner>/oob-collaborator:<tag> \
+#     docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# pull_policy: always ensures the named image is fetched (not built) on `up`.
+services:
+  collaborator:
+    image: ${COLLABORATOR_IMAGE:?set COLLABORATOR_IMAGE to the GHCR image ref}
+    pull_policy: always
