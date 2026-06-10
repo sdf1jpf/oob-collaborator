@@ -129,7 +129,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("tls: %v", err)
 		}
-		certCtx, certCancel := context.WithTimeout(ctx, 5*time.Minute)
+		certCtx, certCancel := context.WithTimeout(ctx, 8*time.Minute)
 		if err := tlsMgr.ObtainCertificate(certCtx); err != nil {
 			log.Printf("TLS cert obtain warning: %v (continuing)", err)
 		}

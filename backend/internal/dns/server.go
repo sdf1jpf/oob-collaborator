@@ -146,12 +146,16 @@ func (s *Server) answerSOA(m *dns.Msg, qname string) {
 
 func (s *Server) answerTXT(m *dns.Msg, qname string) {
 	if txt, ok := s.acme.GetTXT(qname); ok {
+		ttl := uint32(60)
+		if strings.HasPrefix(qname, "_acme-challenge.") {
+			ttl = 10 // short TTL so sequential apex/wildcard challenges don't collide
+		}
 		rr := &dns.TXT{
 			Hdr: dns.RR_Header{
 				Name:   dns.Fqdn(qname),
 				Rrtype: dns.TypeTXT,
 				Class:  dns.ClassINET,
-				Ttl:    60,
+				Ttl:    ttl,
 			},
 			Txt: []string{txt},
 		}

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/caddyserver/certmagic"
 	"github.com/mholt/acmez/v3"
@@ -58,10 +59,43 @@ func (s *dns01Solver) CleanUp(ctx context.Context, challenge acme.Challenge) err
 
 var _ acmez.Solver = (*dns01Solver)(nil)
 
+// dnsChallengeSettleDelay is how long to wait between separate ACME DNS-01
+// challenges that reuse the same _acme-challenge.<domain> TXT name. Certmagic
+// issues apex and wildcard as separate certificates; without a pause, Let's
+// Encrypt secondary validators can still see the previous challenge token.
+const dnsChallengeSettleDelay = 90 * time.Second
+
 func (m *Manager) ObtainCertificate(ctx context.Context) error {
-	domains := []string{m.cfg.Domain, "*." + m.cfg.Domain}
-	log.Printf("Obtaining TLS certificates for %v", domains)
-	return m.magic.ManageSync(ctx, domains)
+	domain := m.cfg.Domain
+	wildcard := "*." + domain
+
+	// Wildcard first — required for HTTPS payload subdomains (token.x.domain).
+	log.Printf("Obtaining TLS certificate for %s", wildcard)
+	if err := m.magic.ManageSync(ctx, []string{wildcard}); err != nil {
+		return fmt.Errorf("wildcard cert: %w", err)
+	}
+
+	log.Printf("Waiting %s for ACME DNS challenge TTL before obtaining apex cert", dnsChallengeSettleDelay)
+	if err := wait(ctx, dnsChallengeSettleDelay); err != nil {
+		return err
+	}
+
+	log.Printf("Obtaining TLS certificate for %s", domain)
+	if err := m.magic.ManageSync(ctx, []string{domain}); err != nil {
+		return fmt.Errorf("apex cert: %w", err)
+	}
+	return nil
+}
+
+func wait(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 func (m *Manager) TLSConfig() *tls.Config {
