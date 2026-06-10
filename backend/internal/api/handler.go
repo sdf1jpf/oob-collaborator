@@ -25,6 +25,7 @@ func (h *Handler) Register(r *gin.RouterGroup) {
 	r.GET("/engagements/:id/interactions", h.ListInteractions)
 	r.POST("/payloads/generate", h.GeneratePayload)
 	r.GET("/engagements/:id/payloads", h.ListPayloads)
+	h.RegisterHostedFiles(r)
 }
 
 type createEngagementRequest struct {

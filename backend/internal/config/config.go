@@ -27,6 +27,7 @@ type Config struct {
 	LogUnknownTokens   bool
 	WebDistPath        string
 	PayloadTokenLength int
+	HostedFileMaxBytes int
 	IPReconEnabled     bool
 	DevMode            bool
 }
@@ -53,6 +54,7 @@ func Load() (*Config, error) {
 		LogUnknownTokens:   getEnvBool("LOG_UNKNOWN_TOKENS", false),
 		WebDistPath:        getEnv("WEB_DIST_PATH", "web/dist"),
 		PayloadTokenLength: getEnvInt("PAYLOAD_TOKEN_LENGTH", 6),
+		HostedFileMaxBytes: getEnvInt("HOSTED_FILE_MAX_BYTES", 262144),
 		IPReconEnabled:     getEnvBool("IP_RECON_ENABLED", true),
 		DevMode:            devMode,
 	}
@@ -74,6 +76,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.PayloadTokenLength > 32 {
 		cfg.PayloadTokenLength = 32
+	}
+	if cfg.HostedFileMaxBytes < 1024 {
+		cfg.HostedFileMaxBytes = 1024
 	}
 
 	if cfg.Domain == "" {

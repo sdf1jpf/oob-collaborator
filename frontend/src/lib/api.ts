@@ -30,6 +30,16 @@ export interface IPRecon {
   updated_at: string
 }
 
+export interface HostedFile {
+  id: string
+  engagement_id: string
+  path: string
+  content_type: string
+  size: number
+  created_at: string
+  example_url: string
+}
+
 export interface Interaction {
   id: string
   payload_id?: string
@@ -92,4 +102,31 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ engagement_id, description }),
     }),
+
+  listHostedFiles: (engagementId: string) =>
+    request<HostedFile[]>(`/api/engagements/${engagementId}/files`),
+
+  uploadHostedFile: async (engagementId: string, formData: FormData) => {
+    const res = await fetch(`/api/engagements/${engagementId}/files`, {
+      method: 'POST',
+      body: formData,
+      credentials: 'include',
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body.error || `Request failed: ${res.status}`)
+    }
+    return res.json() as Promise<HostedFile>
+  },
+
+  deleteHostedFile: async (fileId: string) => {
+    const res = await fetch(`/api/files/${fileId}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body.error || `Request failed: ${res.status}`)
+    }
+  },
 }

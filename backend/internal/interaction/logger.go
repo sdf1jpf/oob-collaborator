@@ -35,7 +35,7 @@ func (l *Logger) AllowSourceIP(sourceIP string) bool {
 	return l.limiter.Allow(sourceIP)
 }
 
-func (l *Logger) LogHTTP(host, method, path, requestURI, sourceIP string, headers map[string][]string, query map[string][]string, body []byte, cookies map[string]string) {
+func (l *Logger) LogHTTP(host, method, path, requestURI, sourceIP string, headers map[string][]string, query map[string][]string, body []byte, cookies map[string]string, hostedFilePath string) {
 	if !l.AllowSourceIP(sourceIP) {
 		return
 	}
@@ -55,7 +55,7 @@ func (l *Logger) LogHTTP(host, method, path, requestURI, sourceIP string, header
 		return
 	}
 
-	raw, _ := json.Marshal(map[string]any{
+	payload := map[string]any{
 		"host":        host,
 		"method":      method,
 		"path":        path,
@@ -64,7 +64,12 @@ func (l *Logger) LogHTTP(host, method, path, requestURI, sourceIP string, header
 		"query":       query,
 		"cookies":     SanitizeCookies(cookies),
 		"body":        string(body),
-	})
+	}
+	if hostedFilePath != "" {
+		payload["hosted_file"] = true
+		payload["hosted_file_path"] = hostedFilePath
+	}
+	raw, _ := json.Marshal(payload)
 
 	interaction, err := l.store.CreateInteraction(ctx, payloadID, "HTTP", sourceIP, string(raw))
 	if err != nil {

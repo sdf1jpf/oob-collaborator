@@ -89,7 +89,7 @@ func main() {
 	pollHandler.Register(router)
 
 	static := web.StaticHandler(cfg.WebDistPath)
-	httpTrap := httpserver.New(cfg, logger, router)
+	httpTrap := httpserver.New(cfg, st, logger, router)
 
 	// HTTP :80 — trap OOB interactions
 	go func() {

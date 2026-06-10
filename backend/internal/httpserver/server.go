@@ -2,24 +2,30 @@ package httpserver
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/oob-collaborator/backend/internal/config"
+	"github.com/oob-collaborator/backend/internal/hostedfile"
 	"github.com/oob-collaborator/backend/internal/interaction"
+	"github.com/oob-collaborator/backend/internal/store"
+	"github.com/oob-collaborator/backend/internal/token"
 )
 
 type Server struct {
 	cfg    *config.Config
+	store  *store.Store
 	logger *interaction.Logger
 	mux    http.Handler
 }
 
-func New(cfg *config.Config, logger *interaction.Logger, mux http.Handler) *Server {
-	return &Server{cfg: cfg, logger: logger, mux: mux}
+func New(cfg *config.Config, st *store.Store, logger *interaction.Logger, mux http.Handler) *Server {
+	return &Server{cfg: cfg, store: st, logger: logger, mux: mux}
 }
 
 func (s *Server) StartHTTP() error {
@@ -73,6 +79,31 @@ func (s *Server) trapInteraction(w http.ResponseWriter, r *http.Request) {
 		host = h
 	}
 
+	hostedFilePath := ""
+	var hostedContent []byte
+	var hostedContentType string
+
+	if s.store != nil {
+		subDomain := token.ExtractSubDomain(host, s.cfg.Domain)
+		if subDomain != "" {
+			if filePath, err := hostedfile.NormalizePath(r.URL.Path); err == nil {
+				ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+				engagementID, err := s.store.GetEngagementIDBySubDomain(ctx, subDomain)
+				cancel()
+				if err == nil {
+					ctx, cancel = context.WithTimeout(r.Context(), 2*time.Second)
+					file, err := s.store.GetHostedFileByEngagementAndPath(ctx, engagementID, filePath)
+					cancel()
+					if err == nil {
+						hostedFilePath = file.Path
+						hostedContent = file.Content
+						hostedContentType = file.ContentType
+					}
+				}
+			}
+		}
+	}
+
 	s.logger.LogHTTP(
 		host,
 		r.Method,
@@ -83,7 +114,15 @@ func (s *Server) trapInteraction(w http.ResponseWriter, r *http.Request) {
 		query,
 		body,
 		cookies,
+		hostedFilePath,
 	)
+
+	if hostedFilePath != "" {
+		w.Header().Set("Content-Type", hostedContentType)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(hostedContent)
+		return
+	}
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)

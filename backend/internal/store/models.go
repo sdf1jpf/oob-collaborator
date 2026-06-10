@@ -55,3 +55,13 @@ type PollInteraction struct {
 	InteractionType string `json:"interaction_type"`
 	Host            string `json:"host"`
 }
+
+type HostedFile struct {
+	ID           uuid.UUID `json:"id"`
+	EngagementID uuid.UUID `json:"engagement_id"`
+	Path         string    `json:"path"`
+	ContentType  string    `json:"content_type"`
+	Content      []byte    `json:"-"`
+	Size         int       `json:"size"`
+	CreatedAt    time.Time `json:"created_at"`
+}

@@ -151,6 +151,93 @@ func (s *Store) GetPayloadBySubDomain(ctx context.Context, subDomain string) (*P
 	return &p, nil
 }
 
+func (s *Store) GetEngagementIDBySubDomain(ctx context.Context, subDomain string) (uuid.UUID, error) {
+	p, err := s.GetPayloadBySubDomain(ctx, subDomain)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return p.EngagementID, nil
+}
+
+func (s *Store) CreateHostedFile(ctx context.Context, engagementID uuid.UUID, filePath, contentType string, content []byte) (*HostedFile, error) {
+	var f HostedFile
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO hosted_files (engagement_id, path, content_type, content)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, engagement_id, path, content_type, content, created_at
+	`, engagementID, filePath, contentType, content).Scan(
+		&f.ID, &f.EngagementID, &f.Path, &f.ContentType, &f.Content, &f.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	f.Size = len(f.Content)
+	return &f, nil
+}
+
+func (s *Store) ListHostedFilesByEngagement(ctx context.Context, engagementID uuid.UUID) ([]HostedFile, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, engagement_id, path, content_type, octet_length(content), created_at
+		FROM hosted_files
+		WHERE engagement_id = $1
+		ORDER BY created_at DESC
+	`, engagementID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []HostedFile
+	for rows.Next() {
+		var f HostedFile
+		if err := rows.Scan(&f.ID, &f.EngagementID, &f.Path, &f.ContentType, &f.Size, &f.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) GetHostedFileByEngagementAndPath(ctx context.Context, engagementID uuid.UUID, filePath string) (*HostedFile, error) {
+	var f HostedFile
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, engagement_id, path, content_type, content, created_at
+		FROM hosted_files
+		WHERE engagement_id = $1 AND path = $2
+	`, engagementID, filePath).Scan(
+		&f.ID, &f.EngagementID, &f.Path, &f.ContentType, &f.Content, &f.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	f.Size = len(f.Content)
+	return &f, nil
+}
+
+func (s *Store) GetHostedFile(ctx context.Context, id uuid.UUID) (*HostedFile, error) {
+	var f HostedFile
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, engagement_id, path, content_type, octet_length(content), created_at
+		FROM hosted_files
+		WHERE id = $1
+	`, id).Scan(&f.ID, &f.EngagementID, &f.Path, &f.ContentType, &f.Size, &f.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &f, nil
+}
+
+func (s *Store) DeleteHostedFile(ctx context.Context, id uuid.UUID) error {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM hosted_files WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
 func (s *Store) CreateInteraction(ctx context.Context, payloadID *uuid.UUID, protocol, sourceIP, rawData string) (*Interaction, error) {
 	var i Interaction
 	err := s.pool.QueryRow(ctx, `
@@ -356,6 +443,10 @@ func randomPayloadToken(length int) (string, error) {
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+func IsUniqueViolation(err error) bool {
+	return isUniqueViolation(err)
 }
 
 func IsNotFound(err error) bool {
