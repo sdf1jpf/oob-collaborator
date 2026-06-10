@@ -12,10 +12,11 @@ import (
 
 	"github.com/oob-collaborator/backend/internal/config"
 	"github.com/oob-collaborator/backend/internal/store"
+	"github.com/oob-collaborator/backend/internal/ws"
 )
 
 const (
-	cacheTTL       = 7 * 24 * time.Hour
+	cacheTTL       = 14 * 24 * time.Hour
 	requestTimeout = 10 * time.Second
 	throttleDelay  = 1500 * time.Millisecond
 	queueSize      = 256
@@ -24,6 +25,7 @@ const (
 type Enricher struct {
 	cfg    *config.Config
 	store  *store.Store
+	hub    *ws.Hub
 	queue  chan string
 	stop   chan struct{}
 	wg     sync.WaitGroup
@@ -31,10 +33,11 @@ type Enricher struct {
 	client *http.Client
 }
 
-func New(cfg *config.Config, st *store.Store) *Enricher {
+func New(cfg *config.Config, st *store.Store, hub *ws.Hub) *Enricher {
 	return &Enricher{
 		cfg:   cfg,
 		store: st,
+		hub:   hub,
 		queue: make(chan string, queueSize),
 		stop:  make(chan struct{}),
 		client: &http.Client{
@@ -97,6 +100,7 @@ func (e *Enricher) process(ip string) {
 
 	if existing, err := e.store.GetIPRecon(ctx, ip); err == nil {
 		if time.Since(existing.UpdatedAt) < cacheTTL {
+			e.broadcastIPRecon(existing)
 			return
 		}
 	} else if !store.IsNotFound(err) {
@@ -112,6 +116,17 @@ func (e *Enricher) process(ip string) {
 
 	if err := e.store.UpsertIPRecon(ctx, recon); err != nil {
 		log.Printf("ip recon: upsert %s: %v", ip, err)
+		return
+	}
+
+	if saved, err := e.store.GetIPRecon(ctx, ip); err == nil {
+		e.broadcastIPRecon(saved)
+	}
+}
+
+func (e *Enricher) broadcastIPRecon(recon *store.IPRecon) {
+	if e.hub != nil {
+		e.hub.BroadcastIPRecon(recon)
 	}
 }
 

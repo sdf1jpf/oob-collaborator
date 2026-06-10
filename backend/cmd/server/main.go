@@ -44,7 +44,7 @@ func main() {
 	}
 
 	hub := ws.NewHub()
-	enricher := recon.New(cfg, st)
+	enricher := recon.New(cfg, st, hub)
 	enricher.Start()
 	defer enricher.Stop()
 

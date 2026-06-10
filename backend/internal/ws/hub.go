@@ -48,6 +48,16 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *Hub) broadcast(payload []byte) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for conn := range h.clients {
+		if err := conn.WriteMessage(websocket.TextMessage, payload); err != nil {
+			log.Printf("websocket write: %v", err)
+		}
+	}
+}
+
 func (h *Hub) BroadcastInteraction(i *store.Interaction) {
 	payload, err := json.Marshal(map[string]any{
 		"type":        "interaction",
@@ -56,12 +66,19 @@ func (h *Hub) BroadcastInteraction(i *store.Interaction) {
 	if err != nil {
 		return
 	}
+	h.broadcast(payload)
+}
 
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	for conn := range h.clients {
-		if err := conn.WriteMessage(websocket.TextMessage, payload); err != nil {
-			log.Printf("websocket write: %v", err)
-		}
+func (h *Hub) BroadcastIPRecon(r *store.IPRecon) {
+	if h == nil || r == nil {
+		return
 	}
+	payload, err := json.Marshal(map[string]any{
+		"type":     "ip_recon",
+		"ip_recon": r,
+	})
+	if err != nil {
+		return
+	}
+	h.broadcast(payload)
 }

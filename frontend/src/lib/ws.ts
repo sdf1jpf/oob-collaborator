@@ -1,5 +1,11 @@
 import type { QueryClient } from '@tanstack/react-query'
-import type { Interaction } from './api'
+import type { Interaction, IPRecon } from './api'
+
+function applyIPRecon(interactions: Interaction[], ipRecon: IPRecon): Interaction[] {
+  return interactions.map((i) =>
+    i.source_ip === ipRecon.ip ? { ...i, ip_recon: ipRecon } : i,
+  )
+}
 
 export function connectInteractionWS(
   queryClient: QueryClient,
@@ -11,6 +17,16 @@ export function connectInteractionWS(
   ws.onmessage = (event) => {
     try {
       const msg = JSON.parse(event.data)
+
+      if (msg.type === 'ip_recon' && msg.ip_recon) {
+        const ipRecon = msg.ip_recon as IPRecon
+        queryClient.setQueryData<Interaction[]>(
+          ['interactions', engagementId],
+          (old) => (old ? applyIPRecon(old, ipRecon) : old),
+        )
+        return
+      }
+
       if (msg.type !== 'interaction' || !msg.interaction) return
 
       const interaction = msg.interaction as Interaction

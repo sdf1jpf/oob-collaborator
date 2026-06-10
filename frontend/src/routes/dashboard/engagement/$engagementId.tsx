@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { InteractionTable } from '../../../components/InteractionTable'
 import { RawInspector } from '../../../components/RawInspector'
-import { api, type Interaction } from '../../../lib/api'
+import { api } from '../../../lib/api'
 import { connectInteractionWS } from '../../../lib/ws'
 
 export const Route = createFileRoute('/dashboard/engagement/$engagementId')({
@@ -13,7 +13,7 @@ export const Route = createFileRoute('/dashboard/engagement/$engagementId')({
 function EngagementView() {
   const { engagementId } = Route.useParams()
   const queryClient = useQueryClient()
-  const [selected, setSelected] = useState<Interaction | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [desc, setDesc] = useState('')
   const [showPayloads, setShowPayloads] = useState(false)
 
@@ -47,6 +47,11 @@ function EngagementView() {
     const ws = connectInteractionWS(queryClient, engagementId)
     return () => ws.close()
   }, [engagementId, queryClient])
+
+  const selected = useMemo(
+    () => interactions.find((i) => i.id === selectedId) ?? null,
+    [interactions, selectedId],
+  )
 
   return (
     <div className="h-full flex flex-col">
@@ -107,13 +112,13 @@ function EngagementView() {
           ) : (
             <InteractionTable
               data={interactions}
-              selectedId={selected?.id ?? null}
-              onSelect={setSelected}
+              selectedId={selectedId}
+              onSelect={(row) => setSelectedId(row.id)}
             />
           )}
         </div>
         <div className="w-[420px] shrink-0">
-          <RawInspector interaction={selected} onClose={() => setSelected(null)} />
+          <RawInspector interaction={selected} onClose={() => setSelectedId(null)} />
         </div>
       </div>
     </div>
