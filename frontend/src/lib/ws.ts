@@ -9,10 +9,12 @@ function applyIPRecon(interactions: Interaction[], ipRecon: IPRecon): Interactio
 
 export function connectInteractionWS(
   queryClient: QueryClient,
-  engagementId: string | undefined,
+  engagementId: string,
 ) {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const ws = new WebSocket(`${protocol}//${window.location.host}/ws`)
+  const ws = new WebSocket(
+    `${protocol}//${window.location.host}/ws?engagement=${encodeURIComponent(engagementId)}`,
+  )
 
   ws.onmessage = (event) => {
     try {
@@ -30,7 +32,7 @@ export function connectInteractionWS(
       if (msg.type !== 'interaction' || !msg.interaction) return
 
       const interaction = msg.interaction as Interaction
-      if (engagementId && interaction.engagement_id !== engagementId) return
+      if (interaction.engagement_id !== engagementId) return
 
       queryClient.setQueryData<Interaction[]>(
         ['interactions', engagementId],

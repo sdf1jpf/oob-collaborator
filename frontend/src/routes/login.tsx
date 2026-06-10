@@ -1,11 +1,11 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { api } from '../lib/api'
-import { isAuthenticated, setToken } from '../lib/auth'
+import { checkAuth } from '../lib/auth'
 
 export const Route = createFileRoute('/login')({
-  beforeLoad: () => {
-    if (isAuthenticated()) {
+  beforeLoad: async () => {
+    if (await checkAuth()) {
       throw redirect({ to: '/dashboard' })
     }
   },
@@ -23,8 +23,7 @@ function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      const { token } = await api.login(password)
-      setToken(token)
+      await api.login(password)
       navigate({ to: '/dashboard' })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')

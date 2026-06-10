@@ -9,16 +9,25 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/oob-collaborator/backend/internal/config"
+	"github.com/oob-collaborator/backend/internal/ratelimit"
+	"github.com/oob-collaborator/backend/internal/security"
 	"github.com/oob-collaborator/backend/internal/store"
 )
 
 type Handler struct {
-	cfg   *config.Config
-	store *store.Store
+	cfg      *config.Config
+	store    *store.Store
+	limiter  *ratelimit.IPLimiter
+	lockout  *ratelimit.LockoutLimiter
 }
 
 func NewHandler(cfg *config.Config, st *store.Store) *Handler {
-	return &Handler{cfg: cfg, store: st}
+	return &Handler{
+		cfg:     cfg,
+		store:   st,
+		limiter: ratelimit.NewIPLimiter(120, time.Minute),
+		lockout: ratelimit.NewLockoutLimiter(10, 15*time.Minute, 15*time.Minute),
+	}
 }
 
 func (h *Handler) Register(r gin.IRoutes) {
@@ -78,6 +87,14 @@ func (h *Handler) Poll(c *gin.Context) {
 }
 
 func (h *Handler) authenticate(c *gin.Context) bool {
+	ip := clientIP(c)
+	if h.lockout.IsLocked(ip) {
+		return false
+	}
+	if !h.limiter.Allow(ip) {
+		return false
+	}
+
 	token := c.GetHeader("X-Collaborator-Token")
 	if token == "" {
 		auth := c.GetHeader("Authorization")
@@ -85,7 +102,25 @@ func (h *Handler) authenticate(c *gin.Context) bool {
 			token = strings.TrimSpace(auth[7:])
 		}
 	}
-	return token != "" && token == h.cfg.PollToken
+	if token == "" || !security.ConstantTimeEqual(token, h.cfg.PollToken) {
+		h.lockout.RecordFailure(ip)
+		return false
+	}
+	h.lockout.RecordSuccess(ip)
+	return true
+}
+
+func clientIP(c *gin.Context) string {
+	if ip := c.GetHeader("X-Real-IP"); ip != "" {
+		return ip
+	}
+	if ip := c.GetHeader("X-Forwarded-For"); ip != "" {
+		if i := strings.Index(ip, ","); i >= 0 {
+			return strings.TrimSpace(ip[:i])
+		}
+		return ip
+	}
+	return c.ClientIP()
 }
 
 type PollResponseItem struct {

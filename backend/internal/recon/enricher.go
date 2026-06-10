@@ -151,7 +151,7 @@ func (e *Enricher) lookup(ctx context.Context, ip string) (*store.IPRecon, error
 	}
 
 	url := fmt.Sprintf(
-		"http://ip-api.com/json/%s?fields=status,message,country,countryCode,regionName,city,lat,lon,isp,org,as",
+		"https://ip-api.com/json/%s?fields=status,message,country,countryCode,regionName,city,lat,lon,isp,org,as",
 		ip,
 	)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

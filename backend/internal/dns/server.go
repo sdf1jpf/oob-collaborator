@@ -12,11 +12,23 @@ import (
 	"github.com/google/uuid"
 	"github.com/miekg/dns"
 	"github.com/oob-collaborator/backend/internal/config"
+	"github.com/oob-collaborator/backend/internal/ratelimit"
 	"github.com/oob-collaborator/backend/internal/recon"
 	"github.com/oob-collaborator/backend/internal/store"
 	"github.com/oob-collaborator/backend/internal/token"
 	"github.com/oob-collaborator/backend/internal/ws"
 )
+
+const (
+	dnsLogQueueSize = 256
+	dnsLogWorkers   = 4
+)
+
+type dnsLogJob struct {
+	qname      string
+	remoteAddr string
+	msg        *dns.Msg
+}
 
 type Server struct {
 	cfg      *config.Config
@@ -24,12 +36,22 @@ type Server struct {
 	hub      *ws.Hub
 	enricher *recon.Enricher
 	acme     *ACMEProvider
+	limiter  *ratelimit.IPLimiter
+	logQueue chan dnsLogJob
 	udpSrv   *dns.Server
 	tcpSrv   *dns.Server
 }
 
-func NewServer(cfg *config.Config, st *store.Store, hub *ws.Hub, enricher *recon.Enricher, acme *ACMEProvider) *Server {
-	s := &Server{cfg: cfg, store: st, hub: hub, enricher: enricher, acme: acme}
+func NewServer(cfg *config.Config, st *store.Store, hub *ws.Hub, enricher *recon.Enricher, acme *ACMEProvider, limiter *ratelimit.IPLimiter) *Server {
+	s := &Server{
+		cfg:      cfg,
+		store:    st,
+		hub:      hub,
+		enricher: enricher,
+		acme:     acme,
+		limiter:  limiter,
+		logQueue: make(chan dnsLogJob, dnsLogQueueSize),
+	}
 	handler := dns.HandlerFunc(s.handleDNS)
 	s.udpSrv = &dns.Server{Addr: fmt.Sprintf(":%d", cfg.DNSPort), Net: "udp", Handler: handler}
 	s.tcpSrv = &dns.Server{Addr: fmt.Sprintf(":%d", cfg.DNSPort), Net: "tcp", Handler: handler}
@@ -37,6 +59,9 @@ func NewServer(cfg *config.Config, st *store.Store, hub *ws.Hub, enricher *recon
 }
 
 func (s *Server) Start() error {
+	for i := 0; i < dnsLogWorkers; i++ {
+		go s.logWorker()
+	}
 	go func() {
 		log.Printf("DNS listening UDP :%d", s.cfg.DNSPort)
 		if err := s.udpSrv.ListenAndServe(); err != nil {
@@ -55,6 +80,12 @@ func (s *Server) Start() error {
 func (s *Server) Shutdown() {
 	_ = s.udpSrv.Shutdown()
 	_ = s.tcpSrv.Shutdown()
+}
+
+func (s *Server) logWorker() {
+	for job := range s.logQueue {
+		s.logDNSInteraction(job.qname, job.remoteAddr, job.msg)
+	}
 }
 
 func (s *Server) handleDNS(w dns.ResponseWriter, r *dns.Msg) {
@@ -101,7 +132,16 @@ func (s *Server) answerA(m *dns.Msg, qname string, w dns.ResponseWriter, r *dns.
 	}
 	m.Answer = append(m.Answer, rr)
 
-	go s.logDNSInteraction(qname, w.RemoteAddr().String(), r)
+	s.enqueueDNSLog(qname, w.RemoteAddr().String(), r)
+}
+
+func (s *Server) enqueueDNSLog(qname, remoteAddr string, r *dns.Msg) {
+	job := dnsLogJob{qname: qname, remoteAddr: remoteAddr, msg: r.Copy()}
+	select {
+	case s.logQueue <- job:
+	default:
+		log.Printf("dns interaction log: queue full, dropping %s", qname)
+	}
 }
 
 func (s *Server) answerNS(m *dns.Msg, qname string) {
@@ -188,6 +228,9 @@ func (s *Server) logDNSInteraction(qname, remoteAddr string, r *dns.Msg) {
 	if host, _, err := net.SplitHostPort(remoteAddr); err == nil {
 		sourceIP = host
 	}
+	if s.limiter != nil && !s.limiter.Allow(sourceIP) {
+		return
+	}
 
 	questions := make([]map[string]string, 0, len(r.Question))
 	for _, q := range r.Question {
@@ -219,5 +262,7 @@ func (s *Server) logDNSInteraction(qname, remoteAddr string, r *dns.Msg) {
 	if s.enricher != nil {
 		s.enricher.Enqueue(sourceIP)
 	}
-	s.hub.BroadcastInteraction(interaction)
+	if interaction.EngagementID != nil {
+		s.hub.BroadcastInteraction(interaction)
+	}
 }

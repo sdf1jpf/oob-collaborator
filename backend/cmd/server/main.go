@@ -18,6 +18,7 @@ import (
 	"github.com/oob-collaborator/backend/internal/httpserver"
 	"github.com/oob-collaborator/backend/internal/interaction"
 	"github.com/oob-collaborator/backend/internal/poll"
+	"github.com/oob-collaborator/backend/internal/ratelimit"
 	"github.com/oob-collaborator/backend/internal/recon"
 	smtpserver "github.com/oob-collaborator/backend/internal/smtp"
 	"github.com/oob-collaborator/backend/internal/store"
@@ -43,15 +44,18 @@ func main() {
 		log.Fatalf("database wait: %v", err)
 	}
 
-	hub := ws.NewHub()
+	ingestionLimiter := ratelimit.NewIPLimiter(120, time.Minute)
+	hub := ws.NewHub(cfg, func(token string) error {
+		return api.ValidateToken(token, cfg)
+	})
 	enricher := recon.New(cfg, st, hub)
 	enricher.Start()
 	defer enricher.Stop()
 
-	logger := interaction.NewLogger(cfg, st, hub, enricher)
+	logger := interaction.NewLogger(cfg, st, hub, enricher, ingestionLimiter)
 	acmeProvider := dnsengine.NewACMEProvider()
 
-	dnsSrv := dnsengine.NewServer(cfg, st, hub, enricher, acmeProvider)
+	dnsSrv := dnsengine.NewServer(cfg, st, hub, enricher, acmeProvider, ingestionLimiter)
 	if err := dnsSrv.Start(); err != nil {
 		log.Fatalf("dns: %v", err)
 	}
@@ -71,13 +75,17 @@ func main() {
 	pollHandler := poll.NewHandler(cfg, st)
 
 	router.POST("/api/login", authHandler.Login)
+	router.POST("/api/logout", authHandler.Logout)
+
+	protected := router.Group("/api")
+	protected.Use(api.JWTAuth(cfg))
+	protected.GET("/me", authHandler.Me)
+	apiHandler.Register(protected)
+
 	router.GET("/ws", func(c *gin.Context) {
 		hub.HandleWS(c.Writer, c.Request)
 	})
 
-	protected := router.Group("/api")
-	protected.Use(api.JWTAuth(cfg))
-	apiHandler.Register(protected)
 	pollHandler.Register(router)
 
 	static := web.StaticHandler(cfg.WebDistPath)

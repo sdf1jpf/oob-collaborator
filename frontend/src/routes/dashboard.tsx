@@ -2,11 +2,11 @@ import { Outlet, createFileRoute, redirect, useNavigate } from '@tanstack/react-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api } from '../lib/api'
-import { clearToken, isAuthenticated } from '../lib/auth'
+import { checkAuth } from '../lib/auth'
 
 export const Route = createFileRoute('/dashboard')({
-  beforeLoad: () => {
-    if (!isAuthenticated()) {
+  beforeLoad: async () => {
+    if (!(await checkAuth())) {
       throw redirect({ to: '/login' })
     }
   },
@@ -36,9 +36,12 @@ function DashboardLayout() {
     },
   })
 
-  const logout = () => {
-    clearToken()
-    navigate({ to: '/login' })
+  const logout = async () => {
+    try {
+      await api.logout()
+    } finally {
+      navigate({ to: '/login' })
+    }
   }
 
   return (

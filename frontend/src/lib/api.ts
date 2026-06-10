@@ -1,5 +1,3 @@
-import { getToken } from './auth'
-
 export interface Engagement {
   id: string
   name: string
@@ -48,16 +46,12 @@ export interface Interaction {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getToken()
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(init?.headers as Record<string, string>),
   }
-  if (token) {
-    headers.Authorization = `Bearer ${token}`
-  }
 
-  const res = await fetch(path, { ...init, headers })
+  const res = await fetch(path, { ...init, headers, credentials: 'include' })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.error || `Request failed: ${res.status}`)
@@ -67,10 +61,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   login: (password: string) =>
-    request<{ token: string }>('/api/login', {
+    request<{ ok: boolean }>('/api/login', {
       method: 'POST',
       body: JSON.stringify({ password }),
     }),
+
+  logout: () =>
+    request<{ ok: boolean }>('/api/logout', {
+      method: 'POST',
+    }),
+
+  me: () => request<{ authenticated: boolean }>('/api/me'),
 
   listEngagements: () => request<Engagement[]>('/api/engagements'),
 

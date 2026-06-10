@@ -3,13 +3,13 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: collaborator
-      POSTGRES_PASSWORD: collaborator
-      POSTGRES_DB: collaborator
+      POSTGRES_USER: ${POSTGRES_USER:-collaborator}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-collaborator}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U collaborator -d collaborator"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-collaborator} -d ${POSTGRES_DB:-collaborator}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -21,9 +21,14 @@ services:
         condition: service_healthy
     volumes:
       - ./backend/migrations:/migrations
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-collaborator}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-collaborator}
+      POSTGRES_SSLMODE: ${POSTGRES_SSLMODE:-disable}
     command:
       - "-path=/migrations"
-      - "-database=postgres://collaborator:collaborator@postgres:5432/collaborator?sslmode=disable"
+      - "-database=postgres://${POSTGRES_USER:-collaborator}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-collaborator}?sslmode=${POSTGRES_SSLMODE:-disable}"
       - "up"
     restart: "no"
 
@@ -47,7 +52,13 @@ services:
       - "25:25/tcp"
       - "587:587/tcp"
     environment:
-      DATABASE_URL: postgres://collaborator:collaborator@postgres:5432/collaborator?sslmode=disable
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-collaborator}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-collaborator}
+      POSTGRES_SSLMODE: ${POSTGRES_SSLMODE:-disable}
+      DATABASE_URL: postgres://${POSTGRES_USER:-collaborator}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-collaborator}?sslmode=${POSTGRES_SSLMODE:-disable}
 
 volumes:
   postgres_data:
