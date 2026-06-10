@@ -51,6 +51,8 @@ services:
       - "443:443/tcp"
       - "25:25/tcp"
       - "587:587/tcp"
+    volumes:
+      - certmagic_data:/home/collaborator/.local/share/certmagic
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
@@ -62,3 +64,4 @@ services:
 
 volumes:
   postgres_data:
+  certmagic_data:
