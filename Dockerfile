@@ -19,8 +19,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /collaborator ./cmd/server
 # Runtime
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates tzdata \
-    && addgroup -S collaborator \
-    && adduser -S collaborator -G collaborator
+    && addgroup -S -g 1000 collaborator \
+    && adduser -S -u 1000 -G collaborator -h /home/collaborator collaborator
 WORKDIR /app
 COPY --from=backend-build /collaborator /app/collaborator
 COPY --from=backend-build /app/web/dist /app/web/dist

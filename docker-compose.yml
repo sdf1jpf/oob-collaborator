@@ -14,6 +14,16 @@ services:
       timeout: 5s
       retries: 5
 
+  certmagic-init:
+    image: alpine:3.20
+    volumes:
+      - certmagic_data:/certmagic
+    command:
+      - /bin/sh
+      - -c
+      - mkdir -p /certmagic && chown -R 1000:1000 /certmagic
+    restart: "no"
+
   migrate:
     image: migrate/migrate:v4.17.1
     depends_on:
@@ -38,6 +48,8 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
+      certmagic-init:
+        condition: service_completed_successfully
       migrate:
         condition: service_completed_successfully
     env_file:
