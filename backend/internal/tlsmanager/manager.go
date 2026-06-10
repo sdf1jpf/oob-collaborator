@@ -99,7 +99,11 @@ func wait(ctx context.Context, d time.Duration) error {
 }
 
 func (m *Manager) TLSConfig() *tls.Config {
-	return m.magic.TLSConfig()
+	cfg := m.magic.TLSConfig().Clone()
+	// Certmagic's default TLS config omits ALPN; clients (curl, browsers) then
+	// fail the handshake with "unsupported application protocols".
+	cfg.NextProtos = []string{"h2", "http/1.1"}
+	return cfg
 }
 
 func (m *Manager) ListenAndServe(addr string, handler http.Handler) error {
